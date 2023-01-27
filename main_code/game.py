@@ -1,0 +1,568 @@
+import pygame
+from pygame.locals import *
+from pygame import mixer
+
+import pickle
+from os import path
+
+
+pygame.mixer.pre_init(44100, -16, 2, 512)
+pygame.mixer.init()
+pygame.init()
+
+
+clock = pygame.time.Clock()
+fps = 60
+
+screen_width = 760
+screen_height = 760
+screen = pygame.display.set_mode((screen_width, screen_height))
+pygame.display.set_caption("Game testing..")
+
+#define font
+#font list available in pygame
+# ['arial', 'arialblack', 'bahnschrift', 'calibri', 'cambriacambriamath', 'cambria', 'candara', 'comicsansms', 'consolas', 'constantia', 'corbel', 'couriernew', 'ebrima', 'franklingothicmedium', 'gabriola', 'gadugi', 'georgia', 'impact', 'inkfree', 'javanesetext', 'leelawadeeui', 'leelawadeeuisemilight', 'lucidaconsole', 'lucidasans', 'malgungothic', 'malgungothicsemilight', 'microsofthimalaya', 'microsoftjhengheimicrosoftjhengheiui'
+font_score = pygame.font.SysFont("calibri", 30)
+font = pygame.font.SysFont("arialblack", 50)
+
+
+
+#define colours
+white = (255, 255, 255)
+cyan = (0, 255, 255)
+
+#game variables
+tile_size = 38
+game_over = 0
+main_menu = True
+level = 1
+max_levels = 4
+score = 0
+
+#load images
+back_img = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\surrounding\\back.jpg")
+restart_img = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\buttons\\restart.png")
+restart_img = pygame.transform.scale(restart_img, (200, 100))
+start_img = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\buttons\\start1.png")
+start_img = pygame.transform.scale(start_img, (250, 126))
+exit_img = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\buttons\\quit.png")
+exit_img = pygame.transform.scale(exit_img, (200, 100))
+menu_back = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\backgrounds\\back.jpg")
+
+
+#load sounds
+mixer.music.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/sounds_wav/pekora_bgm.wav")
+mixer.music.set_volume(0.2)
+mixer.music.play(-1, 0.0, 5000)
+
+
+coin_sound = pygame.mixer.Sound("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/sounds_wav/coin.wav")
+coin_sound.set_volume(0.3)
+jump_sound = pygame.mixer.Sound("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/sounds_wav/jumping.wav")
+jump_sound.set_volume(0.2)
+death_sound = pygame.mixer.Sound("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/sounds_wav/death3.wav")
+death_sound.set_volume(0.5)
+running_sound = pygame.mixer.Sound("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/sounds_wav/running.wav")
+running_sound.set_volume(0.5)
+
+
+
+
+def draw_grid():
+    for line in range(0, 21):
+        pygame.draw.line(screen, (255, 255, 255), (0, line * tile_size), (screen_width, line * tile_size))
+        pygame.draw.line(screen, (255, 255, 255), (line * tile_size, 0), (line * tile_size, screen_height))
+
+#text on display
+def draw_text(text, font, text_col, x, y):
+    img = font.render(text, True, text_col)
+    screen.blit(img, (x, y))
+
+#function to reset level
+def reset_level(level):
+    player.reset(100, screen_height - 120)
+    blob_group.empty()
+    platform_group.empty()
+    lava_group.empty()
+    exit_group.empty()
+    #loading levels from files
+    if path.exists(f"level{level}_data"):
+        pickle_in = open(f"level{level}_data" , "rb")
+        world_data = pickle.load(pickle_in)
+    world = World(world_data)
+
+    return world
+
+class Button:
+    def __init__(self, x, y, image):
+        self.image = image
+        # button_img = pygame.image.load("C:\\Users\\Navneet\\Desktop\\VSCODE\\game_Files\\assets\\buttons\\restart.png")
+        # self.image = pygame.transform.scale(button_img, (200,100))
+        self.rect = self.image.get_rect()
+        self.rect.x = x - 55
+        self.rect.y = y - 220
+        self.clicked = False
+
+    def draw(self):
+
+        action = False
+        #get mouse position
+        pos = pygame.mouse.get_pos()   #gives x and y cords of the mouse at any 1 point
+
+        #check mouseover and clicked conditions
+        if self.rect.collidepoint(pos):
+            if pygame.mouse.get_pressed()[0] == 1 and self.clicked == False:  #0 left mouse button, 
+                action = True 
+                self.clicked = True
+
+
+        #when mouse click is released, then it doesn't show "clicked"  anymore
+        if pygame.mouse.get_pressed()[0] == 0:
+            self.clicked = False 
+
+        #shows button
+        screen.blit(self.image, self.rect)
+
+        return action
+
+
+class Player:
+    def __init__(self, x, y):
+        self.reset(x, y)
+
+    def update(self, game_over):
+        dx = 0
+        dy = 0   #chnanges in x and y
+        walk_cooldown = 5
+        collision_threshold = 20
+
+        if game_over == 0:
+            #key pressing part
+            key = pygame.key.get_pressed()
+            if key[pygame.K_SPACE] and self.jumped == False and self.mid_air == False:  #so that the character dossnt keep jumping up on holding space
+                jump_sound.play()
+                self.vel_y = -17
+                self.jumped = True
+            if key[pygame.K_SPACE] == False:
+                self.jumped = False 
+            if key[pygame.K_LEFT]:
+                # running_sound.play()
+                dx -= 5
+                self.counter += 1
+                self.direction = -1
+            if key[pygame.K_RIGHT]:
+                # running_sound.play()
+                dx += 5
+                self.counter += 1
+                self.direction = 1
+            if key[pygame.K_LEFT] == False and key[pygame.K_RIGHT] == False:
+                self.counter = 0
+                self.index = 0
+                if self.direction == 1:
+                        self.image = self.images_right[self.index]
+                if self.direction == -1:
+                        self.image = self.images_left[self.index]
+
+
+            #handling animation
+            
+            if self.counter > walk_cooldown:
+                self.counter = 0
+                self.index += 1
+                if self.index >= len(self.images_right):
+                        self.index = 0
+                if self.direction == 1:
+                        self.image = self.images_right[self.index]
+                if self.direction == -1:
+                        self.image = self.images_left[self.index]
+
+     
+            #adding gravity
+            self.vel_y += 1
+            if self.vel_y > 10:
+                self.vel_y = 10
+            dy += self.vel_y
+
+
+            #check for collision
+            self.mid_air = True
+            for tile in world.tile_list:
+                #checking for collision in x direction
+                if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+                    dx = 0 
+
+
+                #check for collision in y direction
+                if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.width, self.height):
+
+                    #check if below the ground That is when jumping
+                    if self.vel_y < 0:   #he just hit an underside of a block
+
+                        dy = tile[1].bottom - self.rect.top #distance to be covered until he bumps his head
+                        self.vel_y = 0  #to fix the delay after hitting his head 
+     
+                    #check if above the ground that is falling
+
+                    elif self.vel_y >= 0:   #he just hit an underside of a block
+                        dy = tile[1].top - self.rect.bottom #distance to be covered until he hits the ground with his feet
+                        self.vel_y = 0
+                        self.mid_air = False
+
+
+
+            #check for collision with enemies
+            if pygame.sprite.spritecollide(self, blob_group, False):  #player and blobs
+                game_over = -1
+                death_sound.play()
+
+
+            #check for collision with Lava
+            if pygame.sprite.spritecollide(self, lava_group, False):  #player and blobs
+                game_over = -1
+                death_sound.play()
+
+
+            #check for collision with exit
+            if pygame.sprite.spritecollide(self, exit_group, False):  #player and blobs
+                game_over = 1
+
+
+            #check for collision with moving platforms
+            for platform in platform_group:
+                #checking in the x direction
+                if platform.rect.colliderect(self.rect.x + dx, self.rect.y, self.width, self.height):
+                    dx = 0
+                #checking in the y direction
+                if platform.rect.colliderect(self.rect.x, self.rect.y + dy, self.width, self.height): 
+                    #check if below platform
+                    if abs((self.rect.top + dy) - platform.rect.bottom) < collision_threshold:
+                        #then we must be below
+                        self.vel_y = 0 #must stop once he gets hit
+                        dy = platform.rect.bottom - self.rect.top
+
+                    #check if above platform
+                    elif abs((self.rect.bottom + dy) - platform.rect.top) < collision_threshold:
+                        self.rect.bottom = platform.rect.top + 1 
+                        dy = 0
+                        self.mid_air = False
+
+                    #move sideways with the platform
+                    if platform.move_x != 0:
+                        self.rect.x += platform.move_direction
+
+
+            #update player cordinates
+            self.rect.x += dx
+            self.rect.y += dy
+
+            # if self.rect.bottom > screen_height: #doing this so that he doesnt fall off the screen 
+            #     self.rect.bottom = screen_height
+            #     dy = 0
+
+#calculate new player position
+#check collision at new position
+#adjust the player position
+
+        elif game_over == -1:
+            self.image = self.dead_image
+            draw_text("GAME OVER!", font, cyan, (screen_width // 2) - 170, screen_height // 2)
+            if self.rect.y > 200:
+                self.rect.y -= 5
+                
+
+        #displays the character
+        screen.blit(self.image, self.rect)  #image and coordinates
+        # pygame.draw.rect(screen, (255, 255, 255), self.rect, 2)  #screen, colour, shape, width of border
+
+        return game_over
+
+
+    def reset(self, x, y):
+        self.images_right = []
+        self.images_left = []
+        self.counter = 0
+        self.index = 0
+        img_right1 = pygame.image.load('C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/walking/walk_0.png')
+        img_right1 = pygame.transform.scale(img_right1, (32, 60))   #og values 32, 60
+        img_right2 = pygame.image.load('C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/walking/walk_1.png')
+        img_right2 = pygame.transform.scale(img_right2, (32, 60))
+        img_right3 = pygame.image.load('C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/walking/walk_2.png')
+        img_right3 = pygame.transform.scale(img_right3, (32, 60))
+        self.images_right = [img_right1, img_right2, img_right3]
+
+        img_left1 = pygame.transform.flip(img_right1, True, False)
+        img_left2 = pygame.transform.flip(img_right2, True, False)
+        img_left3 = pygame.transform.flip(img_right3, True, False)
+        self.images_left = [img_left1, img_left2, img_left3]
+
+
+
+            # img_right = pygame.image.load('C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/walking/walk_0.png')
+            # self.img_right = pygame.transform.scale(img_right, (40, 80))
+            # self.images_right.append(img_right)
+        
+        for self.index in range(0, 3):   
+            self.img_right = self.images_right[self.index]
+            self.images_right.append(self.img_right)
+
+        for self.index in range(0, 3):   
+            self.img_left = self.images_left[self.index]
+            self.images_left.append(self.img_left)
+        
+        dead_img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/ghost_dead/ghost_dead.png")
+        self.dead_image = pygame.transform.scale(dead_img, (40, 60))
+        self.image = self.images_right[self.index]
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
+
+        self.vel_y = 0 #y-axis velocity(jump)
+        self.jumped = False
+        self.direction = 0
+        self.mid_air = False
+
+
+class World:
+    def __init__(self, data):
+
+        self.tile_list = []  
+        #load image
+        dirt = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/dirt_block/dirt.jpg")
+        grass = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/grass_block/grass.png")
+
+        row_count = 0
+        for row in data:
+            col_count = 0
+            for tile in row:
+                if tile == 1:
+                    img = pygame.transform.scale(dirt, (tile_size, tile_size))  #scaling the dirt block with the tilesize
+                    img_rect = img.get_rect()  #converting it to a rectangle
+                    img_rect.x += col_count * tile_size       #iterating the value of y
+                    img_rect.y += row_count * tile_size       #iterating the value of y
+                    tile_cordinates = (img, img_rect)
+                    self.tile_list.append(tile_cordinates)
+                if tile == 2:
+                    img = pygame.transform.scale(grass, (tile_size, tile_size))  #scaling the dirt block with the tilesize
+                    img_rect = img.get_rect()  #converting it to a rectangle
+                    img_rect.x += col_count * tile_size       #iterating the value of y
+                    img_rect.y += row_count * tile_size       #iterating the value of y
+                    tile_cordinates = (img, img_rect)
+                    self.tile_list.append(tile_cordinates) 
+                if tile == 3:
+                    blob = Enemy(col_count * tile_size - 17, row_count * tile_size - 10)  
+                    blob_group.add(blob) 
+                if tile == 4:  #horizontal platforms
+                    platform = Platform(col_count * tile_size , row_count * tile_size, 1, 0)  #x = 1 , y = 0: Only horizontal movement
+                    platform_group.add(platform)
+                if tile == 5:
+                    platform = Platform(col_count * tile_size , row_count * tile_size, 0 , 1) #x = 0, y = 1: only vertical movement
+                    platform_group.add(platform)
+                if tile == 6:
+                    lava = Lava(col_count * tile_size , row_count * tile_size + (tile_size // 2))
+                    lava_group.add(lava)
+                if tile == 7:
+                    coin = Coins(col_count * tile_size + (tile_size // 2), row_count * tile_size + (tile_size // 2))
+                    coin_group.add(coin)
+                if tile == 8:
+                    exit = Exit(col_count * tile_size , row_count * tile_size - 18)  
+                    exit_group.add(exit)
+                if tile == 9:
+                    shroom = Mushroom(col_count * tile_size , row_count * tile_size - 7)  
+                    mushroom.add(shroom)
+
+                col_count += 1
+            row_count += 1
+
+    def draw(self):
+        for tile in self.tile_list:
+            screen.blit(tile[0], tile[1])
+            # pygame.draw.rect(screen, (255, 255, 255), tile[1], 2)
+
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  #super class
+        img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/Enemy/blockerMad.png")
+        self.image = pygame.transform.scale(img, (35,35))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.move_direction = 1
+        self.move_counter = 0
+
+    def update(self):
+        self.rect.x += self.move_direction
+        self.move_counter +=1
+        if abs(self.move_counter) > 45:   #checks range from -51 to 51
+            self.move_direction *= -1  #inverts the direction
+            self.move_counter *= -1 
+
+
+
+class Platform(pygame.sprite.Sprite):
+    def __init__(self, x, y, move_x, move_y):
+        pygame.sprite.Sprite.__init__(self)
+        img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/surrounding/snowHalf.png")
+        self.image = pygame.transform.scale(img, (tile_size, tile_size // 2))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.move_counter = 0
+        self.move_direction = 1
+        self.move_x = move_x
+        self.move_y = move_y
+
+
+    def update(self):
+        self.rect.x += self.move_direction * self.move_x
+        self.rect.y += self.move_direction * self.move_y 
+        self.move_counter +=1
+        if abs(self.move_counter) > 45:   #checks range from -51 to 51
+            self.move_direction *= -1  #inverts the direction
+            self.move_counter *= -1 
+
+
+class Lava(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  #super class
+        img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/surrounding/liquidLavaTop_mid.png")
+        self.image = pygame.transform.scale(img, (tile_size, tile_size // 2))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+  
+
+class Exit(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  #super class
+        img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/surrounding/windowOpen.png")
+        self.image = pygame.transform.scale(img, (tile_size, tile_size * 1.5))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y  
+
+
+class Mushroom(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  #super class
+        self.image = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/surrounding/tinyShroom_red.png")
+        self.image = pygame.transform.scale(self.image, (45,45))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+
+class Coins(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)  #super class
+        img = pygame.image.load("C:/Users/Navneet/Desktop/VSCODE/game_Files/assets/coins/coinGold.png")
+        self.image = pygame.transform.scale(img, (tile_size + 5 , tile_size + 5))
+        self.rect = self.image.get_rect()
+        self.rect.center = (x , y)  #midpoint instead of the topleft corner
+    
+  
+        
+
+player = Player(100, screen_height - 120)
+
+mushroom = pygame.sprite.Group()
+blob_group = pygame.sprite.Group()
+platform_group = pygame.sprite.Group()
+lava_group = pygame.sprite.Group()
+exit_group = pygame.sprite.Group()
+coin_group = pygame.sprite.Group()
+
+#create a dummy coin for display purposes
+score_coin = Coins(tile_size // 2, tile_size - 15)
+coin_group.add(score_coin)
+
+restart_button = Button(screen_width // 2 - 50, screen_height // 2 + 100, restart_img)
+start_button = Button(screen_width // 2 - 73, screen_height // 2 + 160, start_img)
+exit_button = Button(screen_width // 2 - 50, screen_height // 2 + 300, exit_img)
+
+#loading levels from files
+if path.exists(f"level{level}_data"):
+    pickle_in = open(f"level{level}_data" , "rb")
+    world_data = pickle.load(pickle_in)
+world = World(world_data)
+
+
+
+######################################################## MAIN WHILE LOOOP ##########################################################################
+run = True
+while run:
+
+    clock.tick(fps)
+    
+
+    if main_menu == True:
+        screen.blit(menu_back, (0 , 0))
+        if exit_button.draw():
+            run = False   #exits the game
+        if start_button.draw():
+            main_menu = False   #brings the mainmenu
+    else:
+        screen.blit(back_img, (0 , 0))
+        world.draw()
+
+        mushroom.draw(screen)
+
+        if game_over == 0:
+            blob_group.update()
+            platform_group.update()
+            #update score 
+            #check if a coin has been collected or not
+            if pygame.sprite.spritecollide(player, coin_group, True):  #coins get deleted
+                score += 1
+                coin_sound.play()
+            draw_text(" x " + str(score), font_score, white, tile_size - 10, 10)
+
+
+
+        blob_group.draw(screen)     #both are object instances from sprite classes
+        platform_group.draw(screen)
+        lava_group.draw(screen)     #both are object instances from sprite classes
+        exit_group.draw(screen)
+        coin_group.draw(screen)
+
+        game_over = player.update(game_over)
+
+        # draw_grid()
+
+        #if player dies here, restart the game
+        if game_over == -1:
+            if restart_button.draw():             #does the same thing except the progress is also reset
+                world_data = []
+                world = reset_level(level)
+                # player.reset(100, screen_height - 120)   #this line restarts the current level also
+                game_over = 0
+                score = 0
+
+        #if player has completed the level
+        if game_over == 1:
+            #reset game and go to next level
+            level += 1
+            if level <= max_levels:
+                #reset level
+                world_data = []
+                world = reset_level(level)
+                game_over = 0
+            else:
+                draw_text("YOU WIN!", font, cyan, (screen_width // 2) - 130, screen_height // 2)
+                if restart_button.draw():
+                    level = 1
+                    #reset level
+                    world_data = []
+                    world = reset_level(level)
+                    game_over = 0
+                    score = 0
+                
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+
+    pygame.display.update()
+   
+pygame.quit()
